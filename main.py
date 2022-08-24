@@ -1,7 +1,6 @@
 import psycopg2
 
-def create_db(conn):
-    with conn.cursor() as cur:
+def create_db(cur):
         cur.execute("""
         CREATE TABLE IF NOT EXISTS client (
 	        PRIMARY key (id),
@@ -21,17 +20,15 @@ def create_db(conn):
         cur.execute("""
         CREATE TABLE IF NOT EXISTS email (
 	        id    INTEGER PRIMARY KEY REFERENCES client(id),
-	        email VARCHAR(80) not null
+	        email VARCHAR(80)
         );
         """)
-        conn.commit()
-def add_client(conn, first_name, last_name, email, phones=None):
-    with conn.cursor() as cur:
+
+def add_client(cur, first_name, last_name, email, phones=None):
         cur.execute("""
         INSERT INTO client (first_name, last_name) VALUES (%s, %s) RETURNING id;
         """, (first_name, last_name))
         client_id = cur.fetchone()
-        print(client_id[0])
         cur.execute("""
         INSERT INTO phone_number (client_id, phones) VALUES (%s, %s);
         """, (client_id[0], phones))
@@ -39,32 +36,34 @@ def add_client(conn, first_name, last_name, email, phones=None):
         INSERT INTO email (id, email) VALUES (%s, %s);
         """, (client_id[0], email))
 
-def add_phone(conn, client_id, phones):
-    with conn.cursor() as cur:
+def add_phone(cur, client_id, phones):
         cur.execute(f"""
                 INSERT INTO phone_number (client_id, phones) VALUES (%s, %s);
                 """, (client_id, phones))
-        conn.commit()
-def change_client(conn, client_id, first_name=None, last_name=None, email=None, phones=None):
-    with conn.cursor() as cur:
-        cur.execute("""
-        UPDATE client SET first_name = (%s),last_name = (%s) WHERE id = (%s);
-        """, (first_name, last_name, client_id))
-        cur.execute("""
-        UPDATE phone_number SET phones = (%s) WHERE client_id = (%s);
-        """,(phones, client_id))
-        cur.execute("""
-        UPDATE email SET email = (%s) WHERE id = (%s);
-        """,(email, client_id))
-        conn.commit()
-def delete_phone(conn, phones, client_id=None):
-    with conn.cursor() as cur:
+
+def change_client(cur, parameter):
+        if parameter['имя'] is not None:
+            cur.execute("""
+            UPDATE client SET first_name = (%s) WHERE id = (%s);
+            """, (parameter['имя'], parameter['id']))
+        if parameter['фамилия'] is not None:
+            cur.execute("""
+            UPDATE client SET last_name = (%s) WHERE id = (%s);
+            """, (parameter['фамилия'], parameter['id']))
+        if parameter['телефон'] is not None:
+            cur.execute("""
+            UPDATE phone_number SET phones = (%s) WHERE client_id = (%s);
+            """,(parameter['телефон'], parameter['id']))
+        if parameter['email'] is not None:
+            cur.execute("""
+            UPDATE email SET email = (%s) WHERE id = (%s);
+            """,(parameter['email'], parameter['id']))
+def delete_phone(cur, phones):
         cur.execute("""
         DELETE FROM phone_number WHERE phones = (%s);
         """, (phones,))
-        conn.commit()
-def delete_client(conn, client_id):
-    with conn.cursor() as cur:
+
+def delete_client(cur, client_id):
         cur.execute("""
         DELETE FROM phone_number WHERE client_id = (%s);
         """, (str(client_id)))
@@ -74,29 +73,45 @@ def delete_client(conn, client_id):
         cur.execute("""
         DELETE FROM client WHERE id =  (%s);
         """, (str(client_id)))
-        conn.commit()
-def find_client(conn, first_name, last_name, email, phone):
-    with conn.cursor() as cur:
+
+def find_client(cur, parameter):
+        a = tuple()
+        b = None
+        name_parameters = {'имя':'c.first_name', 'фамилия':'c.last_name', 'телефон':'p.phones',
+                           'email':'e.email', 'id':'c.id'}
+        for k, v in parameter.items():
+            if  b is None:
+                if v is not None:
+                    for k2, v2 in name_parameters.items():
+                        if k == k2:
+                            a = (v2, v)
+                            b = v
+                            break
+            else:
+                break
+
         cur.execute("""
-        SELECT c.first_name, c.last_name,  e.email, p.phones
-        FROM client c  
-        JOIN email e 
-        ON c.id = e.id
-        JOIN phone_number p 
-        ON p.client_id = c.id
-        WHERE c.last_name = (%s) OR c.first_name = (%s) OR e.email = (%s) OR p.phones = (%s);
-        """, (last_name, first_name, email, phone))
+               SELECT c.first_name, c.last_name,  e.email, p.phones, c.id
+               FROM client c
+               LEFT JOIN email e
+               ON c.id = e.id
+               LEFT JOIN phone_number p
+               ON p.client_id = c.id
+               WHERE  {} = {};
+               """.format(str(a[0]), str(a[1])))
         print(cur.fetchall())
 
-with psycopg2.connect(database="Py_db", user='postgres', host='localhost', password='Va1er1y*SQL123') as conn:
-    create_db(conn)
-    add_client(conn, "valeriy", "Ivanov", "web@gmail.com", 9200343514)
-    add_client(conn, "Zina", "Ivanova", "rzin@gmail.com", 9200343666)
-    add_phone(conn, 1, 9200343514)
-    # change_client(conn, 1, 'Поликарп', 'Петров', '777@777.ru', 6669996660)
-    # delete_phone(conn, 6669996660,)
-    # delete_client(conn, 2)
-    # find_client(conn, "Zina", "Ivanova", "rzin@gmail.com", 9200343666)
-    # find_client(conn, "Zina", None, None, None)
-    # find_client(conn, None, None, None, 9200343666)
-conn.close()
+if __name__ == "__main__":
+    with psycopg2.connect(database="Py_db", user='postgres', host='localhost', password='Va1er1y*SQL123') as conn:
+        with conn.cursor() as cur:
+            create_db(cur)
+            add_client(cur, "valeriy", "Ivanov", "web@gmail.com", 9200343514)
+            add_client(cur, "Zina", "Ivanova", "rzin@gmail.com", 9200343666)
+            add_phone(cur, 1, 9200343514)
+            change_client(cur, {'id':1, 'имя': 'АркадиЙ', 'фамилия':None, 'телефон':None, 'email':None})
+            delete_phone(cur, 9200343666)
+            find_client(cur, {'телефон':9200343514})
+            find_client(cur, {'id': 2})
+            find_client(cur, {'фамилия':"'Ivanova'", 'email':"'rzin@gmail.com'"})
+            conn.commit()
+    conn.close()
